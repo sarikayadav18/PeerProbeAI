@@ -1,0 +1,4 @@
+package com.PeerProbeAI.server.model;
+
+public class UserPresence {
+}

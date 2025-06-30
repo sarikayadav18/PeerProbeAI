@@ -1,16 +1,21 @@
 import React from 'react';
-import styles from './UserCursor.module.css';
 
 const UserCursor = ({ position, color, name }) => {
-  const style = {
-    left: `${position * 10}px`, // Adjust based on your editor's character width
-    backgroundColor: color,
-  };
-
   return (
-    <div className={styles.cursorContainer} style={style}>
-      <div className={styles.cursor} />
-      <div className={styles.cursorLabel} style={{ backgroundColor: color }}>
+    <div 
+      className="absolute top-0 h-full"
+      style={{ 
+        left: `${position * 10}px`, // Adjust based on your editor's character width
+      }}
+    >
+      <div 
+        className="absolute top-0 w-0.5 h-6"
+        style={{ backgroundColor: color }}
+      />
+      <div 
+        className="absolute top-6 px-2 py-1 text-xs font-medium text-white rounded-md whitespace-nowrap"
+        style={{ backgroundColor: color }}
+      >
         {name}
       </div>
     </div>
