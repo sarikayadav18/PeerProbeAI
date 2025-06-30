@@ -2,26 +2,37 @@ import React from 'react';
 
 const UserProfile = ({ user }) => {
   return (
-    <div className="user-profile">
-      <div className="profile-field">
-        <span className="field-label">Name:</span>
-        <span className="field-value">{user.name}</span>
-      </div>
-      <div className="profile-field">
-        <span className="field-label">Username:</span>
-        <span className="field-value">{user.username}</span>
-      </div>
-      <div className="profile-field">
-        <span className="field-label">Email:</span>
-        <span className="field-value">{user.email}</span>
-      </div>
-      <div className="profile-field">
-        <span className="field-label">Rating:</span>
-        <span className="field-value">{user.rating} ⭐</span>
-      </div>
-      <div className="profile-field">
-        <span className="field-label">Roles:</span>
-        <span className="field-value">{user.roles.join(', ')}</span>
+    <div className="bg-white shadow rounded-lg p-6 max-w-md mx-auto">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b pb-2">
+          <span className="text-sm font-medium text-gray-500">Name:</span>
+          <span className="text-sm font-semibold text-gray-900">{user.name}</span>
+        </div>
+        
+        <div className="flex items-center justify-between border-b pb-2">
+          <span className="text-sm font-medium text-gray-500">Username:</span>
+          <span className="text-sm font-semibold text-gray-900">{user.username}</span>
+        </div>
+        
+        <div className="flex items-center justify-between border-b pb-2">
+          <span className="text-sm font-medium text-gray-500">Email:</span>
+          <span className="text-sm font-semibold text-gray-900 break-all">{user.email}</span>
+        </div>
+        
+        <div className="flex items-center justify-between border-b pb-2">
+          <span className="text-sm font-medium text-gray-500">Rating:</span>
+          <span className="text-sm font-semibold text-gray-900 flex items-center">
+            {user.rating} <span className="ml-1 text-yellow-500">⭐</span>
+          </span>
+        </div>
+
+        {/* Uncomment if roles are needed */}
+        {/* <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-500">Roles:</span>
+          <span className="text-sm font-semibold text-gray-900">
+            {user.roles.join(', ')}
+          </span>
+        </div> */}
       </div>
     </div>
   );
