@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import UserCursor from './UserCursor';
 import Toolbar from './Toolbar';
-import styles from './Editor.module.css';
 
 const Editor = ({ content, onContentChange, users, currentUser }) => {
   const editorRef = useRef(null);
@@ -34,12 +33,12 @@ const Editor = ({ content, onContentChange, users, currentUser }) => {
   }, []);
 
   return (
-    <div className={styles.editorContainer}>
+    <div className="flex flex-col h-full bg-white rounded-lg shadow-md overflow-hidden">
       <Toolbar />
-      <div className={styles.editorWrapper}>
+      <div className="relative flex-1 p-4">
         <textarea
           ref={editorRef}
-          className={styles.editor}
+          className="w-full h-full p-4 font-mono text-gray-800 bg-gray-50 rounded border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           value={content}
           onChange={handleChange}
           spellCheck="false"
