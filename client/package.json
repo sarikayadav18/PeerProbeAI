@@ -10,11 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@stomp/stompjs": "^7.1.1",
     "@tailwindcss/vite": "^4.1.11",
     "axios": "^1.10.0",
+    "lodash.debounce": "^4.0.8",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.3",
+    "sockjs-client": "^1.6.1",
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
