@@ -9,6 +9,9 @@ export default defineConfig({
     react()
 
   ],
+  optimizeDeps: {
+    include: ['@monaco-editor/react']
+  },
 })
 
 
