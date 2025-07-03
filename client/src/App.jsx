@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { SocketProvider } from './context/SocketContext'; // Import SocketProvider
+import { SocketProvider } from './context/SocketContext';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import Navbar from './components/layout/Navbar';
 import Home from './pages/Home';
@@ -10,14 +10,14 @@ import Signup from './components/auth/Signup';
 import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
-import CodeEditor from './components/editor/CodeEditor';
+import InterviewPage from './components/interview/InterviewPage'; // Import your InterviewPage component
 import { createDocument } from './services/api';
 import './App.css';
 
 function App() {
   return (
     <AuthProvider>
-      <SocketProvider> {/* Add SocketProvider here */}
+      <SocketProvider>
         <Router>
           <div className="app-container">
             <Navbar />
@@ -33,9 +33,15 @@ function App() {
                   </ProtectedRoute>
                 } />
                 
-                <Route path="/editor" element={
+                <Route path="/interview/:docId" element={
                   <ProtectedRoute>
-                    <EditorEntryPoint />
+                    <InterviewPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/start-interview" element={
+                  <ProtectedRoute>
+                    <InterviewEntryPoint />
                   </ProtectedRoute>
                 } />
                 
@@ -59,42 +65,50 @@ function App() {
   );
 }
 
-const EditorEntryPoint = () => {
-  const [docId, setDocId] = useState(null);
+const InterviewEntryPoint = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const token = user?.token;
+  const userId = user?.id;
+
   useEffect(() => {
-    const initializeDocument = async () => {
+    const initializeInterview = async () => {
       try {
         const response = await createDocument();
-        setDocId(response.id);
+        // Navigate to the interview page with the new docId
+        navigate(`/interview/${response.id}`);
       } catch (err) {
-        setError(err.response?.data?.message || 'Failed to create document');
-      } finally {
+        setError(err.response?.data?.message || 'Failed to create interview document');
         setLoading(false);
       }
     };
 
-    initializeDocument();
-  }, []);
+    initializeInterview();
+  }, [navigate]);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Initializing editor...</div>;
+    return <div className="flex items-center justify-center h-screen">Setting up interview session...</div>;
   }
 
   if (error) {
-    return <div className="flex items-center justify-center h-screen text-red-500">{error}</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="text-red-500 mb-4">{error}</div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Try Again
+        </button>
+      </div>
+    );
   }
 
-  return (
-    <CodeEditor 
-      docId={docId}
-      userId='3' // Will be replaced with actual user from context
-      initialContent="// Start collaborating!\n// This is a shared code editor"
-      language="javascript"
-    />
-  );
+  return null;
 };
 
 export default App;
