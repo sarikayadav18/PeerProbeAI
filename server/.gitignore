@@ -3,7 +3,10 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
-logs/
+# Ignore all logs but keep the directory
+logs/*
+!logs/.gitkeep
+
 
 ### STS ###
 .apt_generated

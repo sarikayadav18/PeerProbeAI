@@ -87,12 +87,12 @@ public class WebSocketController {
         );
     }
 
-    @SubscribeMapping("/document/{docId}/participants")
+    @MessageMapping("/document/{docId}/participants")
     public String[] getParticipants(
             @DestinationVariable String docId,
             @AuthenticationPrincipal Authentication authentication) {
 
-        logger.debug("Request for participants in doc {}", docId);
+        logger.info("Received participants for doc {}: {}", docId, authentication.getName());
 
         if (authentication == null || !authentication.isAuthenticated()) {
             logger.warn("Unauthenticated user requested participants for doc {}", docId);

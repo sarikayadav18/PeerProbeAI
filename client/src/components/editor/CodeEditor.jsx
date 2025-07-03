@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Editor from '@monaco-editor/react';
+import * as monacoEditor from 'monaco-editor';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import EditorToolbar from './EditorToolbar';
 import UserList from './UserList';
@@ -12,7 +13,8 @@ const CodeEditor = ({ docId, userId, initialContent = '', language = 'javascript
   const [languageMode, setLanguageMode] = useState(language);
   const editorRef = useRef(null);
   const decorationsRef = useRef([]);
-  
+  const ignoreChangesRef = useRef(false);
+
   const {
     isConnected,
     onOperation,
@@ -23,157 +25,123 @@ const CodeEditor = ({ docId, userId, initialContent = '', language = 'javascript
     getParticipants
   } = useWebSocket(docId, userId);
 
-  // Initialize editor and set up collaboration
+  // Fetch initial participants
   useEffect(() => {
     if (!docId) return;
+    getParticipants().then(setParticipants);
+  }, [docId, getParticipants]);
 
-    const fetchParticipants = async () => {
-      const users = await getParticipants();
-      setParticipants(users);
-    };
-
-    fetchParticipants();
-
-    // Handle incoming operations from other users
-    const unsubscribeOps = onOperation((operation) => {
-      if (operation.userId === userId) return;
-
-      setRevision(operation.revision);
-      
-      switch (operation.type) {
-        case 'INSERT':
-          setContent(prev => 
-            prev.slice(0, operation.position) + 
-            operation.text + 
-            prev.slice(operation.position)
-          );
-          break;
-        case 'DELETE':
-          setContent(prev => 
-            prev.slice(0, operation.position) + 
-            prev.slice(operation.position + operation.length)
-          );
-          break;
-        default:
-          console.warn('Unknown operation type:', operation.type);
+  // Incoming operations
+  useEffect(() => {
+    const unsubscribeOps = onOperation(op => {
+      if (op.userId === userId) return;
+      setRevision(op.revision);
+      ignoreChangesRef.current = true;
+      try {
+        setContent(prev => {
+          if (op.type === 'INSERT') {
+            return prev.slice(0, op.position) + op.text + prev.slice(op.position);
+          } else if (op.type === 'DELETE') {
+            return prev.slice(0, op.position) + prev.slice(op.position + op.length);
+          }
+          return prev;
+        });
+      } finally {
+        ignoreChangesRef.current = false;
       }
     });
+    return () => unsubscribeOps();
+  }, [onOperation, userId]);
 
-    // Handle cursor updates from other users
+  // Incoming cursor updates: render decorations
+  useEffect(() => {
     const unsubscribeCursors = onCursorUpdate(({ userId: peerId, cursorData }) => {
       if (peerId === userId || !editorRef.current) return;
 
-      // Remove previous decorations for this user
-      decorationsRef.current = decorationsRef.current.filter(
-        dec => dec.options.className !== `cursor-${peerId}`
-      );
+      // Remove old decorations for this peer
+      const removeIds = decorationsRef.current
+        .filter(d => ['cursor-' + peerId, 'selection-' + peerId].includes(d.options.className))
+        .map(d => d.id);
+
+      editorRef.current.deltaDecorations(removeIds, []);
+      decorationsRef.current = decorationsRef.current.filter(d => !removeIds.includes(d.id));
 
       if (cursorData) {
+        const newDecs = [];
         const { position, selection } = cursorData;
-        const newDecorations = [];
 
-        // Add cursor decoration
         if (position) {
-          newDecorations.push({
-            range: new monaco.Range(
-              position.lineNumber,
-              position.column,
-              position.lineNumber,
-              position.column + 1
-            ),
-            options: {
-              className: `cursor-${peerId}`,
-              hoverMessage: { value: `User: ${peerId}` },
-              stickiness: 1 /* Never grow when typing at edges */
-            }
+          newDecs.push({
+            range: new monacoEditor.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+            options: { className: `cursor-${peerId}` }
           });
         }
-
-        // Add selection decoration if exists
-        if (selection) {
-          newDecorations.push({
-            range: new monaco.Range(
+        if (selection && !selection.isEmpty) {
+          newDecs.push({
+            range: new monacoEditor.Range(
               selection.startLineNumber,
               selection.startColumn,
               selection.endLineNumber,
               selection.endColumn
             ),
-            options: {
-              className: `selection-${peerId}`,
-              isWholeLine: false
-            }
+            options: { className: `selection-${peerId}` }
           });
         }
 
-        // Apply new decorations
-        const ids = editorRef.current.deltaDecorations([], newDecorations);
-        decorationsRef.current.push(...ids.map((id, i) => ({
-          id,
-          options: newDecorations[i].options
-        })));
+        const newIds = editorRef.current.deltaDecorations([], newDecs);
+        decorationsRef.current.push(...newIds.map((id, i) => ({ id, options: newDecs[i].options })));
       }
     });
+    return () => unsubscribeCursors();
+  }, [onCursorUpdate, userId]);
 
-    // Handle participant updates
+  // Participant updates
+  useEffect(() => {
     const unsubscribeParticipants = onParticipantsUpdate(setParticipants);
+    return () => unsubscribeParticipants();
+  }, [onParticipantsUpdate]);
 
-    return () => {
-      unsubscribeOps();
-      unsubscribeCursors();
-      unsubscribeParticipants();
-    };
-  }, [docId, userId, onOperation, onCursorUpdate, onParticipantsUpdate, getParticipants]);
-
-  // Handle editor changes
+  // Editor change handler
   const handleEditorChange = (newValue, event) => {
-    if (!event.changes || event.isUndoing || event.isRedoing) {
-      return;
-    }
-
+    if (ignoreChangesRef.current || event.isUndoing || event.isRedoing) return;
     setContent(newValue);
-
-    // Create and broadcast operations for each change
     event.changes.forEach(change => {
-      const operation = {
+      const op = {
         type: change.text ? 'INSERT' : 'DELETE',
         position: change.rangeOffset,
         text: change.text,
         length: change.rangeLength,
-        revision: revision + 1
+        revision: revision + 1,
+        userId
       };
-
-      broadcastOperation(operation);
+      broadcastOperation(op);
+      setRevision(r => r + 1);
     });
-
-    setRevision(prev => prev + 1);
   };
 
-  // Broadcast cursor position (debounced)
-  const broadcastCursorPosition = debounce(() => {
-    if (!editorRef.current) return;
+  // Debounced broadcast cursor
+  const debounceBroadcast = useMemo(
+    () => debounce(() => {
+      if (!editorRef.current || ignoreChangesRef.current) return;
+      const position = editorRef.current.getPosition();
+      const selection = editorRef.current.getSelection();
+      // Always broadcast both position & selection
+      broadcastCursorUpdate({ position, selection: selection.isEmpty() ? null : selection });
+    }, 100),
+    [broadcastCursorUpdate]
+  );
 
-    const selection = editorRef.current.getSelection();
-    const position = editorRef.current.getPosition();
-
-    broadcastCursorUpdate({
-      position,
-      selection: selection && !selection.isEmpty() ? selection : null
-    });
-  }, 100);
-
-  // Handle editor mount
-  const handleEditorDidMount = (editor, monaco) => {
+  // Mount editor
+  const handleEditorDidMount = (editor) => {
     editorRef.current = editor;
-    
-    // Set up cursor tracking
-    editor.onDidChangeCursorPosition(broadcastCursorPosition);
-    editor.onDidChangeCursorSelection(broadcastCursorPosition);
+    // Send initial cursor state
+    debounceBroadcast();
+    // Track future movements
+    editor.onDidChangeCursorPosition(debounceBroadcast);
+    editor.onDidChangeCursorSelection(debounceBroadcast);
   };
 
-  // Handle language change
-  const handleLanguageChange = (newLanguage) => {
-    setLanguageMode(newLanguage);
-  };
+  const handleLanguageChange = newLang => setLanguageMode(newLang);
 
   return (
     <div className="code-editor-container">
@@ -182,7 +150,6 @@ const CodeEditor = ({ docId, userId, initialContent = '', language = 'javascript
         onLanguageChange={handleLanguageChange}
         connectionStatus={isConnected ? 'connected' : 'disconnected'}
       />
-      
       <div className="editor-content">
         <Editor
           height="80vh"
@@ -190,15 +157,9 @@ const CodeEditor = ({ docId, userId, initialContent = '', language = 'javascript
           value={content}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            wordWrap: 'on',
-            automaticLayout: true
-          }}
+          options={{ minimap: { enabled: false }, fontSize: 14, wordWrap: 'on', automaticLayout: true }}
         />
-        
-        <UserList participants={participants} currentUser={userId} />
+        {/* <UserList participants={participants} currentUser={userId} /> */}
       </div>
     </div>
   );
