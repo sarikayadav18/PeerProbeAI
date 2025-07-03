@@ -1,8 +1,6 @@
 package com.PeerProbeAI.server.security;
 
-import io.jsonwebtoken.Jwt;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import org.slf4j.Logger;
@@ -24,68 +22,140 @@ public class JwtUtils {
     @Value("${app.jwt.expirationMs}")
     private int jwtExpirationMs;
 
+    // Generate signing key from secret
     private SecretKey getSigningKey() {
-        logger.debug("Generating signing key from secret");
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
-        logger.debug("Signing key generated successfully");
-        return key;
+        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
+    /**
+     * Generates a JWT token from authentication object
+     */
     public String generateJwtToken(Authentication authentication) {
-        logger.info("Starting JWT generation for authentication principal");
         UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
-        String username = userPrincipal.getUsername();
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
-        logger.debug("Username: {}", username);
-        logger.debug("Issued at: {}", now);
-        logger.debug("Expiration at: {}", expiryDate);
-
-        String token = Jwts.builder()
-                .setSubject(username)
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(getSigningKey())
+        return Jwts.builder()
+                .setSubject(userPrincipal.getUsername())
+                .claim("userId", userPrincipal.getId())
+                .claim("email", userPrincipal.getEmail())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .signWith(getSigningKey(), Jwts.SIG.HS512)
                 .compact();
-
-        logger.info("JWT generated successfully");
-        return token;
     }
 
+    /**
+     * Extracts username from JWT token
+     */
     public String getUserNameFromJwtToken(String token) {
-        logger.info("Extracting username from JWT token");
-        try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(getSigningKey())
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-            String subject = claims.getSubject();
-            logger.debug("Username extracted: {}", subject);
-            return subject;
-        } catch (SignatureException e) {
-            logger.error("Invalid JWT signature: {}", e.getMessage());
-        } catch (Exception e) {
-            logger.error("JWT parsing error: {}", e.getMessage());
-        }
-        return null;
+        return parseClaims(token).getSubject();
     }
 
+    /**
+     * Extracts user ID from JWT token
+     */
+    public Integer getUserIdFromJwtToken(String token) {
+        return parseClaims(token).get("userId", Integer.class);
+    }
+
+    /**
+     * Extracts email from JWT token
+     */
+    public String getEmailFromJwtToken(String token) {
+        return parseClaims(token).get("email", String.class);
+    }
+
+    /**
+     * Validates JWT token
+     */
     public boolean validateJwtToken(String authToken) {
-        logger.info("Validating JWT token");
         try {
             Jwts.parser()
                     .verifyWith(getSigningKey())
                     .build()
                     .parseSignedClaims(authToken);
-            logger.info("JWT token is valid");
             return true;
         } catch (SignatureException e) {
             logger.error("Invalid JWT signature: {}", e.getMessage());
-        } catch (Exception e) {
-            logger.error("JWT validation error: {}", e.getMessage());
+        } catch (MalformedJwtException e) {
+            logger.error("Invalid JWT token: {}", e.getMessage());
+        } catch (ExpiredJwtException e) {
+            logger.error("JWT token is expired: {}", e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            logger.error("JWT token is unsupported: {}", e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.error("JWT claims string is empty: {}", e.getMessage());
         }
         return false;
+    }
+
+    /**
+     * Parses JWT claims
+     */
+    private Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    /**
+     * Gets complete user details from token
+     */
+    public UserDetails getUserDetailsFromToken(String token) {
+        Claims claims = parseClaims(token);
+        return new UserDetails(
+                claims.getSubject(),
+                claims.get("userId", Integer.class),
+                claims.get("email", String.class)
+        );
+    }
+
+    /**
+     * Gets token expiration date
+     */
+    public Date getExpirationDateFromToken(String token) {
+        return parseClaims(token).getExpiration();
+    }
+
+    /**
+     * Checks if token is expired
+     */
+    public boolean isTokenExpired(String token) {
+        final Date expiration = getExpirationDateFromToken(token);
+        return expiration.before(new Date());
+    }
+
+    /**
+     * Generates a token from user details (for non-authentication scenarios)
+     */
+    public String generateTokenFromUserDetails(UserDetailsImpl userDetails) {
+        return Jwts.builder()
+                .setSubject(userDetails.getUsername())
+                .claim("userId", userDetails.getId())
+                .claim("email", userDetails.getEmail())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
+                .signWith(getSigningKey(), Jwts.SIG.HS512)
+                .compact();
+    }
+
+    /**
+     * Inner class for user details transport
+     */
+    public static class UserDetails {
+        private final String username;
+        private final Integer userId;
+        private final String email;
+
+        public UserDetails(String username, Integer userId, String email) {
+            this.username = username;
+            this.userId = userId;
+            this.email = email;
+        }
+
+        public String getUsername() { return username; }
+        public Integer getUserId() { return userId; }
+        public String getEmail() { return email; }
     }
 }

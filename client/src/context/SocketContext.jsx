@@ -13,6 +13,10 @@ export const SocketProvider = ({ children }) => {
   const maxReconnectAttempts = 5;
   const clientRef = useRef(null);
 
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const token = user?.token;
+
   const connect = () => {
     // Clear any existing subscriptions on reconnect
     subscriptions.current.forEach((sub) => sub.unsubscribe());
@@ -31,9 +35,14 @@ export const SocketProvider = ({ children }) => {
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
       debug: (str) => console.log('[WS]', str),
+       
       connectHeaders: {
 
-        Authorization: `Bearer ${localStorage.getItem('token')}`
+       
+
+
+
+        Authorization: `Bearer ${token}`
       },
       onConnect: () => {
         console.log('Successfully connected to WebSocket');
@@ -134,7 +143,7 @@ export const SocketProvider = ({ children }) => {
         body: JSON.stringify(operation),
         headers: { 
           'content-type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       return true;
@@ -156,7 +165,7 @@ export const SocketProvider = ({ children }) => {
         body: JSON.stringify(cursorData),
         headers: { 
           'content-type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       return true;
@@ -178,7 +187,7 @@ export const SocketProvider = ({ children }) => {
         body: JSON.stringify({ userId }),
         headers: { 
           'content-type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       return true;
