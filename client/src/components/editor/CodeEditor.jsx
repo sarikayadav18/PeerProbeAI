@@ -9,13 +9,14 @@ import debounce from 'lodash.debounce';
 const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', language = 'javascript' }) => {
   const [content, setContent] = useState(initialContent);
   const [revision, setRevision] = useState(0);
-  const [participants, setParticipants] = useState([{ id: userId, name: userName }]);
+  const [participants, setParticipants] = useState([{ userId: userId }]);
   const [languageMode, setLanguageMode] = useState(language);
   const editorRef = useRef(null);
   const decorationsRef = useRef({});
   const ignoreChangesRef = useRef(false);
   const userColorsRef = useRef({});
   const activeUsersRef = useRef(new Set([userId]));
+  const lastChangeRef = useRef(null); // Track the last change to avoid duplicates
 
   const {
     isConnected,
@@ -41,35 +42,27 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
   }, []);
 
   // Enhanced participant management
-  const updateParticipants = useCallback((newParticipants) => {
-    // Ensure current user is always included
-    if (!newParticipants.some(p => p.id === userId)) {
-      newParticipants.push({ id: userId, name: userName });
-    }
-
-    // Update active users
-    activeUsersRef.current = new Set(newParticipants.map(p => p.id));
-    
-    setParticipants(newParticipants);
-  }, [userId, userName]);
+  const updateParticipants = useCallback((idStrings) => {
+    const parsedParticipants = idStrings.map(idStr => ({ userId: Number(idStr) }));
+    activeUsersRef.current = new Set(parsedParticipants.map(p => p.userId));
+    setParticipants(parsedParticipants);
+  }, []);
 
   // Fetch initial participants
   useEffect(() => {
     if (!docId) return;
-    
+
     const fetchParticipants = async () => {
       try {
-        const fetchedParticipants = await getParticipants();
-        console.log("Fetched participants:", fetchedParticipants);
-        updateParticipants(fetchedParticipants);
+        const fetchedIdStrings = await getParticipants();
+        updateParticipants(fetchedIdStrings);
       } catch (error) {
         console.error('Error fetching participants:', error);
-        updateParticipants([{ id: userId, name: userName }]);
       }
     };
-    
+
     fetchParticipants();
-  }, [docId, getParticipants, userId, userName, updateParticipants]);
+  }, [docId, getParticipants, updateParticipants]);
 
   // Handle participant updates from WebSocket
   useEffect(() => {
@@ -80,7 +73,7 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
   // Handle incoming edit operations
   useEffect(() => {
     const unsubscribeOps = onOperation(op => {
-      if (op.userId === userId) return;
+      if (op.userId == userId) return;
       
       // Track active users
       activeUsersRef.current.add(op.userId);
@@ -108,14 +101,12 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
     const unsubscribeCursors = onCursorUpdate(({ userId: peerId, position, selection }) => {
       if (!editorRef.current) return;
 
-      // Track active users
-      if (peerId && peerId !== userId) {
+      if (peerId && peerId != userId) {
         activeUsersRef.current.add(peerId);
       }
 
-      if (peerId === userId) return;
+      if (peerId == userId) return;
 
-      // Remove old decorations for this peer
       if (decorationsRef.current[peerId]) {
         editorRef.current.deltaDecorations(decorationsRef.current[peerId], []);
         delete decorationsRef.current[peerId];
@@ -126,7 +117,6 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
       const userColor = getUserColor(peerId);
       const newDecs = [];
       
-      // Create cursor decoration
       if (position) {
         newDecs.push({
           range: new monacoEditor.Range(
@@ -143,7 +133,6 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
           }
         });
 
-        // Add user name label
         const peerName = participants.find(p => p.id === peerId)?.name || `User ${peerId}`;
         newDecs.push({
           range: new monacoEditor.Range(
@@ -162,7 +151,6 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
         });
       }
 
-      // Create selection decoration
       if (selection && !selection.isEmpty) {
         newDecs.push({
           range: new monacoEditor.Range(
@@ -178,11 +166,9 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
         });
       }
 
-      // Apply decorations
       const newIds = editorRef.current.deltaDecorations([], newDecs);
       decorationsRef.current[peerId] = newIds;
 
-      // Add dynamic styles for this user's cursor
       const styleId = `cursor-style-${peerId}`;
       let style = document.getElementById(styleId);
       if (!style) {
@@ -220,7 +206,6 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
 
     return () => {
       unsubscribeCursors();
-      // Clean up all cursor styles
       Object.keys(decorationsRef.current).forEach(peerId => {
         const style = document.getElementById(`cursor-style-${peerId}`);
         if (style) document.head.removeChild(style);
@@ -228,22 +213,36 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
     };
   }, [onCursorUpdate, userId, participants, getUserColor]);
 
-  // Editor change handler
+  // Editor change handler - updated to prevent duplicate characters
   const handleEditorChange = useCallback((newValue, event) => {
     if (ignoreChangesRef.current || event.isUndoing || event.isRedoing) return;
+    
+    // Skip if this is our own change that we've already processed
+    if (lastChangeRef.current && lastChangeRef.current.newValue === newValue) {
+      lastChangeRef.current = null;
+      return;
+    }
+    
     setContent(newValue);
-    event.changes.forEach(change => {
-      const op = {
-        type: change.text ? 'INSERT' : 'DELETE',
-        position: change.rangeOffset,
-        text: change.text,
-        length: change.rangeLength,
-        revision: revision + 1,
-        userId
-      };
-      broadcastOperation(op);
-      setRevision(r => r + 1);
-    });
+    
+    // Only broadcast if there are actual changes
+    if (event.changes && event.changes.length > 0) {
+      event.changes.forEach(change => {
+        const op = {
+          type: change.text ? 'INSERT' : 'DELETE',
+          position: change.rangeOffset,
+          text: change.text,
+          length: change.rangeLength,
+          revision: revision + 1,
+          userId
+        };
+        broadcastOperation(op);
+        setRevision(r => r + 1);
+      });
+      
+      // Store the last change we processed to avoid duplicates
+      lastChangeRef.current = { newValue, changes: event.changes };
+    }
   }, [broadcastOperation, revision, userId]);
 
   // Cursor broadcast handler
@@ -268,11 +267,8 @@ const CodeEditor = ({ docId, userId, userName = 'You', initialContent = '', lang
   // Mount editor
   const handleEditorDidMount = useCallback((editor) => {
     editorRef.current = editor;
-    
-    // Send initial cursor state
     handleCursorChange();
     
-    // Track cursor movements
     const disposables = [
       editor.onDidChangeCursorPosition(debouncedCursorBroadcast),
       editor.onDidChangeCursorSelection(debouncedCursorBroadcast),

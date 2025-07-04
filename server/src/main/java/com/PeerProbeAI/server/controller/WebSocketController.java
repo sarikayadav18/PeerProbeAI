@@ -1,6 +1,7 @@
 package com.PeerProbeAI.server.controller;
 
 import com.PeerProbeAI.server.model.CollabOperation;
+import com.PeerProbeAI.server.security.JwtUtils;
 import com.PeerProbeAI.server.service.CollabService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 
+import java.security.Principal;
 import java.util.Arrays;
 
 @Controller
@@ -92,27 +94,41 @@ public class WebSocketController {
     }
 
     @MessageMapping("/document/{docId}/participants")
-    @SendTo("topic/document/{docId}/participants")
-    public String[] getParticipants(
+    public void getParticipants(
             @DestinationVariable String docId,
-            @AuthenticationPrincipal Authentication authentication) {
-
-        logger.info("Received participants for doc {}: {}", docId, authentication.getName());
-
+            @AuthenticationPrincipal Authentication authentication
+    ) {
         if (authentication == null || !authentication.isAuthenticated()) {
             logger.warn("Unauthenticated user requested participants for doc {}", docId);
-            return new String[0];
+            return;
+        }
+
+        Integer userId = null;
+
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof JwtUtils.UserDetails userDetails) {
+            userId = userDetails.getUserId();
+            logger.info("Authenticated user requesting participants: username = {}, userId = {}", userDetails.getUsername(), userId);
+        } else {
+            logger.info("Authenticated user requesting participants: {}", authentication.getName());
         }
 
         try {
+            collabService.addParticipant(docId,userId.toString());
             String[] participants = collabService.getDocumentParticipants(docId);
+
             logger.debug("Returning {} participants for doc {}", participants.length, docId);
-            return participants;
+
+            messagingTemplate.convertAndSend(
+                    String.format("/topic/document/%s/participants", docId),
+                    participants
+            );
         } catch (Exception e) {
-            logger.error("Error getting participants for doc {}: {}", docId, e.getMessage());
-            return new String[0];
+            logger.error("Error getting participants for doc {}: {}", docId, e.getMessage(), e);
         }
     }
+
+
 
     // Request DTO for cursor updates
     public static class CursorUpdateRequest {

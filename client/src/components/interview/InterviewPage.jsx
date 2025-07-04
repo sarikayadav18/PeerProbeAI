@@ -23,11 +23,11 @@ const InterviewPage = () => {
   
   // Splitter state
   const [splitterPosition, setSplitterPosition] = useState(50);
-  const isDraggingSplitter = useRef(false);
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
   
   // Video call box state
   const [videoCallPosition, setVideoCallPosition] = useState({ x: 20, y: 20 });
-  const isDraggingVideo = useRef(false);
+  const [isDraggingVideo, setIsDraggingVideo] = useState(false);
   const videoCallRef = useRef(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
 
@@ -69,40 +69,44 @@ const InterviewPage = () => {
   // Handle splitter drag
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (isDraggingSplitter.current) {
+      if (isDraggingSplitter) {
+        e.preventDefault();
         const newPosition = (e.clientX / window.innerWidth) * 100;
         setSplitterPosition(Math.max(20, Math.min(80, newPosition)));
       }
     };
 
     const handleMouseUp = () => {
-      isDraggingSplitter.current = false;
-      document.body.style.cursor = '';
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      if (isDraggingSplitter) {
+        setIsDraggingSplitter(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
     };
 
-    if (isDraggingSplitter.current) {
+    if (isDraggingSplitter) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
     }
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDraggingSplitter.current]);
+  }, [isDraggingSplitter]);
 
   const handleSplitterMouseDown = (e) => {
     e.preventDefault();
-    isDraggingSplitter.current = true;
+    setIsDraggingSplitter(true);
   };
 
   // Handle video call box drag
   useEffect(() => {
     const handleVideoMouseMove = (e) => {
-      if (isDraggingVideo.current && videoCallRef.current) {
+      if (isDraggingVideo && videoCallRef.current) {
+        e.preventDefault();
         const newX = e.clientX - dragStartPos.current.x;
         const newY = e.clientY - dragStartPos.current.y;
         
@@ -117,30 +121,34 @@ const InterviewPage = () => {
     };
 
     const handleVideoMouseUp = () => {
-      isDraggingVideo.current = false;
-      document.body.style.cursor = '';
-      document.removeEventListener('mousemove', handleVideoMouseMove);
-      document.removeEventListener('mouseup', handleVideoMouseUp);
+      if (isDraggingVideo) {
+        setIsDraggingVideo(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
     };
 
-    if (isDraggingVideo.current) {
+    if (isDraggingVideo) {
       document.addEventListener('mousemove', handleVideoMouseMove);
       document.addEventListener('mouseup', handleVideoMouseUp);
       document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
     }
 
     return () => {
       document.removeEventListener('mousemove', handleVideoMouseMove);
       document.removeEventListener('mouseup', handleVideoMouseUp);
     };
-  }, [isDraggingVideo.current]);
+  }, [isDraggingVideo]);
 
   const handleVideoMouseDown = (e) => {
     e.preventDefault();
-    isDraggingVideo.current = true;
+    setIsDraggingVideo(true);
+    
+    const rect = videoCallRef.current.getBoundingClientRect();
     dragStartPos.current = {
-      x: e.clientX - videoCallPosition.x,
-      y: e.clientY - videoCallPosition.y
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
     };
   };
 
@@ -162,8 +170,8 @@ const InterviewPage = () => {
 
       {/* Splitter */}
       <div 
-        className="absolute top-0 bottom-0 w-2 bg-gray-200 hover:bg-gray-400 cursor-col-resize z-10"
-        style={{ left: `${splitterPosition}%` }}
+        className="absolute top-0 bottom-0 w-2 bg-gray-200 hover:bg-gray-400 cursor-col-resize z-10 transition-colors"
+        style={{ left: `${splitterPosition}%`, transform: 'translateX(-50%)' }}
         onMouseDown={handleSplitterMouseDown}
       />
 
@@ -184,8 +192,8 @@ const InterviewPage = () => {
       {/* Video Call - Movable box */}
       <div
         ref={videoCallRef}
-        className={`absolute w-72 h-64 bg-white border border-gray-300 rounded-lg shadow-md z-50 ${
-          isDraggingVideo.current ? 'cursor-grabbing' : 'cursor-move'
+        className={`absolute w-72 h-64 bg-white border border-gray-300 rounded-lg shadow-lg z-50 transition-shadow ${
+          isDraggingVideo ? 'cursor-grabbing shadow-xl' : 'cursor-move'
         }`}
         style={{
           left: `${videoCallPosition.x}px`,
@@ -193,18 +201,24 @@ const InterviewPage = () => {
         }}
         onMouseDown={handleVideoMouseDown}
       >
-        <div className="p-2 bg-gray-100 border-b border-gray-300 rounded-t-lg font-semibold">
+        <div className="p-2 bg-gray-100 border-b border-gray-300 rounded-t-lg font-semibold select-none">
           Video Call
         </div>
         <div className="h-[calc(100%-40px)] flex flex-col">
-          <div className="flex-grow flex items-center justify-center bg-gray-200">
+          <div className="flex-grow flex items-center justify-center bg-gray-200 text-gray-500 select-none">
             Video feed would appear here
           </div>
           <div className="p-2 flex justify-center gap-2">
-            <button className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">
+            <button 
+              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
               Mute
             </button>
-            <button className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">
+            <button 
+              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
               Camera Off
             </button>
           </div>

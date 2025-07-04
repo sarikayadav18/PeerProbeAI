@@ -8,7 +8,8 @@ export const useWebSocket = (docId, userId) => {
     unsubscribe,
     sendOperation,
     sendCursorUpdate,
-    joinDocument
+    joinDocument,
+    sendMessageTo
   } = useSocket();
 
   const pendingOperations = useRef([]);
@@ -93,8 +94,10 @@ export const useWebSocket = (docId, userId) => {
         resolve(data);
         unsub();
       });
+
+      sendMessageTo(`/app/document/${docId}/participants`, {});
     });
-  }, [docId, safeSubscribe]);
+  }, [docId, safeSubscribe, sendMessageTo]);
 
   return {
     isConnected,

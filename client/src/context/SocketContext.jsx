@@ -152,6 +152,11 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
+  // Inside SocketProvider, just before `return`:
+  const sendMessageTo = (destination, payload = {}) => {
+    return send(destination, payload);
+  };
+
   const value = {
     isConnected,
     subscribe,
@@ -165,6 +170,7 @@ export const SocketProvider = ({ children }) => {
     sendOperation: (docId, op) => send(`/app/document/${docId}/edit`, op),
     sendCursorUpdate: (docId, cursor) => send(`/app/document/${docId}/cursor`, cursor),
     joinDocument: (docId, userId) => send(`/app/document/${docId}/join`, { userId }),
+    sendMessageTo,
   };
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

@@ -102,7 +102,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private UsernamePasswordAuthenticationToken createAuthentication(JwtUtils.UserDetails userDetails) {
         return new UsernamePasswordAuthenticationToken(
-                userDetails.getUsername(),
+                userDetails,
                 null,
                 DEFAULT_AUTHORITIES
         );
