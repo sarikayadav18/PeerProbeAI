@@ -48,19 +48,29 @@ export const useWebSocket = (docId, userId) => {
   }, [docId, isConnected, sendOperation, userId]);
 
   const broadcastCursorUpdate = useCallback((cursorData) => {
+    const enrichedCursor = {
+      ...cursorData,
+      userId,
+      timestamp: Date.now()
+    };
+    
     if (isConnected) {
-      sendCursorUpdate(docId, cursorData);
+      sendCursorUpdate(docId, enrichedCursor);
     } else {
-      pendingCursorUpdates.current.push(cursorData);
+      pendingCursorUpdates.current.push(enrichedCursor);
     }
-  }, [docId, isConnected, sendCursorUpdate]);
+  }, [docId, isConnected, sendCursorUpdate, userId]);
 
   const flushPending = useCallback(() => {
-    pendingOperations.current.forEach(op => sendOperation(docId, op));
-    pendingOperations.current = [];
+    if (pendingOperations.current.length > 0) {
+      pendingOperations.current.forEach(op => sendOperation(docId, op));
+      pendingOperations.current = [];
+    }
     
-    pendingCursorUpdates.current.forEach(cursor => sendCursorUpdate(docId, cursor));
-    pendingCursorUpdates.current = [];
+    if (pendingCursorUpdates.current.length > 0) {
+      pendingCursorUpdates.current.forEach(cursor => sendCursorUpdate(docId, cursor));
+      pendingCursorUpdates.current = [];
+    }
   }, [docId, sendOperation, sendCursorUpdate]);
 
   useEffect(() => {
@@ -72,10 +82,10 @@ export const useWebSocket = (docId, userId) => {
 
   useEffect(() => {
     return () => {
-      activeSubscriptions.current.forEach(unsub => unsub());
+      activeSubscriptions.current.forEach(unsub => unsubscribe(unsub));
       activeSubscriptions.current = [];
     };
-  }, []);
+  }, [unsubscribe]);
 
   const getParticipants = useCallback(() => {
     return new Promise((resolve) => {

@@ -49,7 +49,6 @@ public class WebSocketController {
         logger.debug("Processing operation from user {} for doc {}", username, docId);
 
         try {
-            // Process the operation with operational transformation
             CollabOperation transformedOp = collabService.processOperation(
                     docId,
                     operation,
@@ -68,10 +67,10 @@ public class WebSocketController {
     @MessageMapping("/document/{docId}/cursor")
     public void handleCursorPosition(
             @DestinationVariable String docId,
-            String cursorData,
+            CursorUpdateRequest cursorUpdate,
             @Header("simpUser") Authentication authentication) {
 
-        logger.debug("Received cursor update for doc {}: {}", docId, cursorData);
+        logger.debug("Received cursor update for doc {}: {}", docId, cursorUpdate);
 
         if (authentication == null || !authentication.isAuthenticated()) {
             logger.warn("Unauthenticated user attempted cursor update on doc {}", docId);
@@ -83,11 +82,17 @@ public class WebSocketController {
 
         messagingTemplate.convertAndSend(
                 String.format("/topic/document/%s/cursor", docId),
-                new CursorUpdate(username, cursorData)
+                new CursorUpdateResponse(
+                        cursorUpdate.getUserId(),
+                        cursorUpdate.getPosition(),
+                        cursorUpdate.getSelection(),
+                        cursorUpdate.getTimestamp()
+                )
         );
     }
 
     @MessageMapping("/document/{docId}/participants")
+    @SendTo("topic/document/{docId}/participants")
     public String[] getParticipants(
             @DestinationVariable String docId,
             @AuthenticationPrincipal Authentication authentication) {
@@ -109,25 +114,74 @@ public class WebSocketController {
         }
     }
 
-    // Inner class for cursor updates
-    private static class CursorUpdate {
-        private final String userId;
-        private final String cursorData;
+    // Request DTO for cursor updates
+    public static class CursorUpdateRequest {
+        private Position position;
+        private Selection selection;
+        private Long userId;
+        private Long timestamp;
 
-        public CursorUpdate(String userId, String cursorData) {
+        // Getters and setters
+        public Position getPosition() { return position; }
+        public void setPosition(Position position) { this.position = position; }
+        public Selection getSelection() { return selection; }
+        public void setSelection(Selection selection) { this.selection = selection; }
+        public Long getUserId() { return userId; }
+        public void setUserId(Long userId) { this.userId = userId; }
+        public Long getTimestamp() { return timestamp; }
+        public void setTimestamp(Long timestamp) { this.timestamp = timestamp; }
+    }
+
+    // Response DTO for cursor updates
+    public static class CursorUpdateResponse {
+        private final Long userId;
+        private final Position position;
+        private final Selection selection;
+        private final Long timestamp;
+
+        public CursorUpdateResponse(Long userId, Position position, Selection selection, Long timestamp) {
             this.userId = userId;
-            this.cursorData = cursorData;
+            this.position = position;
+            this.selection = selection;
+            this.timestamp = timestamp;
         }
 
-        public String getUserId() { return userId; }
-        public String getCursorData() { return cursorData; }
+        // Getters
+        public Long getUserId() { return userId; }
+        public Position getPosition() { return position; }
+        public Selection getSelection() { return selection; }
+        public Long getTimestamp() { return timestamp; }
+    }
 
-        @Override
-        public String toString() {
-            return "CursorUpdate{" +
-                    "userId='" + userId + '\'' +
-                    ", cursorData='" + cursorData + '\'' +
-                    '}';
+    public static class Position {
+        private int lineNumber;
+        private int column;
+
+        // Getters and setters
+        public int getLineNumber() { return lineNumber; }
+        public void setLineNumber(int lineNumber) { this.lineNumber = lineNumber; }
+        public int getColumn() { return column; }
+        public void setColumn(int column) { this.column = column; }
+    }
+
+    public static class Selection {
+        private int startLineNumber;
+        private int startColumn;
+        private int endLineNumber;
+        private int endColumn;
+
+        // Getters and setters
+        public int getStartLineNumber() { return startLineNumber; }
+        public void setStartLineNumber(int startLineNumber) { this.startLineNumber = startLineNumber; }
+        public int getStartColumn() { return startColumn; }
+        public void setStartColumn(int startColumn) { this.startColumn = startColumn; }
+        public int getEndLineNumber() { return endLineNumber; }
+        public void setEndLineNumber(int endLineNumber) { this.endLineNumber = endLineNumber; }
+        public int getEndColumn() { return endColumn; }
+        public void setEndColumn(int endColumn) { this.endColumn = endColumn; }
+
+        public boolean isEmpty() {
+            return startLineNumber == endLineNumber && startColumn == endColumn;
         }
     }
 }
