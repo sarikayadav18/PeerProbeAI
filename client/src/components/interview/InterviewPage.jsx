@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import CodeEditor from '../editor/CodeEditor';
 import axios from 'axios';
+import VideoCallComponent from './VideoCallComponent'; // Import the VideoCallComponent
 
 // Configure axios instance
 const api = axios.create({
@@ -13,6 +14,7 @@ const InterviewPage = () => {
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.id;
   const token = user?.token;
+  const [peerId, setPeerId] = useState(null); // State to track the peer ID
 
   // State for the components
   const [question, setQuestion] = useState('');
@@ -41,17 +43,25 @@ const InterviewPage = () => {
             'Authorization': `Bearer ${token}`
           }
         });
-        const { content, title } = response.data;
+        const { content, title, participants } = response.data;
         
         setQuestion(title || 'Interview Question');
         setInitialContent(content || '');
+
+        console.log("participant", participants);
+
+        // Find the peer ID (first participant that's not the current user)
+        if (participants && participants.length > 0) {
+          const peer = participants.find(p => Number(p) != userId);
+          if (peer) setPeerId(peer);
+        }
+
         setIsLoading(false);
       } catch (err) {
         setError('Failed to load document');
         setIsLoading(false);
         console.error('Error fetching document:', err);
         
-        // If unauthorized, redirect to login
         if (err.response?.status === 401) {
           window.location.href = '/login';
         }
@@ -64,9 +74,9 @@ const InterviewPage = () => {
       setError('Missing authentication token');
       setIsLoading(false);
     }
-  }, [docId, token]);
+  }, [docId, token, userId]);
 
-  // Handle splitter drag
+  // Handle splitter drag (keep existing implementation)
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (isDraggingSplitter) {
@@ -102,7 +112,7 @@ const InterviewPage = () => {
     setIsDraggingSplitter(true);
   };
 
-  // Handle video call box drag
+  // Handle video call box drag (keep existing implementation)
   useEffect(() => {
     const handleVideoMouseMove = (e) => {
       if (isDraggingVideo && videoCallRef.current) {
@@ -192,7 +202,7 @@ const InterviewPage = () => {
       {/* Video Call - Movable box */}
       <div
         ref={videoCallRef}
-        className={`absolute w-72 h-64 bg-white border border-gray-300 rounded-lg shadow-lg z-50 transition-shadow ${
+        className={`absolute w-80 h-96 bg-white border border-gray-300 rounded-lg shadow-lg z-50 transition-shadow ${
           isDraggingVideo ? 'cursor-grabbing shadow-xl' : 'cursor-move'
         }`}
         style={{
@@ -201,28 +211,20 @@ const InterviewPage = () => {
         }}
         onMouseDown={handleVideoMouseDown}
       >
-        <div className="p-2 bg-gray-100 border-b border-gray-300 rounded-t-lg font-semibold select-none">
-          Video Call
-        </div>
-        <div className="h-[calc(100%-40px)] flex flex-col">
-          <div className="flex-grow flex items-center justify-center bg-gray-200 text-gray-500 select-none">
-            Video feed would appear here
-          </div>
-          <div className="p-2 flex justify-center gap-2">
-            <button 
-              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Mute
-            </button>
-            <button 
-              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Camera Off
-            </button>
-          </div>
-        </div>
+        {/* Replace the placeholder content with VideoCallComponent */}
+        <VideoCallComponent 
+          targetUserId={peerId} 
+          onDragStart={(e) => {
+            // Prevent drag events from propagating to the parent div
+            e.stopPropagation();
+          }}
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '0.5rem',
+            overflow: 'hidden'
+          }}
+        />
       </div>
     </div>
   );

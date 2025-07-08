@@ -11,70 +11,60 @@ export const SocketProvider = ({ children }) => {
   const maxReconnectAttempts = 5;
   const clientRef = useRef(null);
 
-  // pull token from localStorage whenever we connect
   const getToken = () => {
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : null;
     return user?.token || '';
   };
 
+  const getUserId = () => {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    return user?.id || '';
+  };
+
   const connect = () => {
-    // clean up old subscriptions
     subscriptions.current.forEach((sub) => sub.unsubscribe());
     subscriptions.current.clear();
 
-    const socket = new SockJS('http://localhost:8080/collab-ws', null, {
+    const socket = new SockJS('http://localhost:8080/ws', null, {
       transports: ['websocket', 'xhr-streaming'],
       withCredentials: false,
     });
 
     const client = new Client({
-      // use SockJS under the hood
       webSocketFactory: () => socket,
-
-      // heartbeat & debug
-      reconnectDelay: 0,           // we'll handle reconnection manually
+      reconnectDelay: 0,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
       debug: (msg) => console.log('[WS]', msg),
-
-      // initial connect headers
       connectHeaders: {
         Authorization: `Bearer ${getToken()}`,
       },
-
-      // inject auth header on every outgoing STOMP frame
       beforeSend: (frame) => {
         frame.headers['Authorization'] = `Bearer ${getToken()}`;
       },
-
       onConnect: () => {
         console.log('WS ▶ Connected');
         setIsConnected(true);
         reconnectAttempts.current = 0;
       },
-
       onDisconnect: () => {
         console.log('WS ▶ Disconnected');
         setIsConnected(false);
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current += 1;
-          console.log(`Reconnecting… (${reconnectAttempts.current}/${maxReconnectAttempts})`);
+          console.log(`WS ▶ Reconnecting (${reconnectAttempts.current}/${maxReconnectAttempts})`);
           setTimeout(connect, 5000);
         } else {
-          console.warn('Max reconnect attempts reached');
+          console.warn('WS ▶ Max reconnect attempts reached');
         }
       },
-
       onStompError: (frame) => {
-        console.error('STOMP Error ▶', frame.headers.message);
-        if (frame.headers.message.toLowerCase().includes('unauthorized')) {
-          console.error('Authentication failed – check your token');
-        }
+        console.error('WS ▶ STOMP Error:', frame.headers.message);
       },
-
       onWebSocketError: (err) => {
-        console.error('WebSocket Error ▶', err);
+        console.error('WS ▶ WebSocket Error:', err);
       },
     });
 
@@ -83,15 +73,13 @@ export const SocketProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // only connect if token exists
     if (getToken()) {
       connect();
     } else {
-      console.warn('No JWT found – skipping WS connect');
+      console.warn('WS ▶ No JWT token found, skipping connection');
     }
 
     return () => {
-      // cleanup on unmount
       if (clientRef.current) {
         console.log('WS ▶ Cleaning up');
         subscriptions.current.forEach((sub) => sub.unsubscribe());
@@ -103,7 +91,7 @@ export const SocketProvider = ({ children }) => {
 
   const subscribe = (destination, callback) => {
     if (!clientRef.current?.connected) {
-      console.warn('WS ▶ Cannot subscribe; not connected yet');
+      console.warn('WS ▶ Cannot subscribe, not connected yet');
       return () => {};
     }
 
@@ -118,27 +106,28 @@ export const SocketProvider = ({ children }) => {
           const payload = message.body ? JSON.parse(message.body) : null;
           callback(payload);
         } catch (err) {
-          console.error('WS ▶ parse error', err);
+          console.error('WS ▶ Failed to parse message', err);
         }
       },
       headers
     );
 
     subscriptions.current.set(destination, sub);
+
     return () => {
       sub.unsubscribe();
       subscriptions.current.delete(destination);
     };
   };
 
-  const send = (dest, bodyObj) => {
+  const send = (destination, bodyObj) => {
     if (!clientRef.current?.connected) {
-      console.warn('WS ▶ Cannot send; not connected');
+      console.warn('WS ▶ Cannot send, not connected yet');
       return false;
     }
     try {
       clientRef.current.publish({
-        destination: dest,
+        destination,
         body: JSON.stringify(bodyObj),
         headers: {
           'content-type': 'application/json',
@@ -147,30 +136,56 @@ export const SocketProvider = ({ children }) => {
       });
       return true;
     } catch (err) {
-      console.error('WS ▶ publish failed', err);
+      console.error('WS ▶ Failed to publish message', err);
       return false;
     }
   };
 
-  // Inside SocketProvider, just before `return`:
-  const sendMessageTo = (destination, payload = {}) => {
-    return send(destination, payload);
+  // ✅ Updated Video Signaling methods
+
+  const initiateCall = (calleeId) => {
+    return send('/app/video/call', {
+      callerId: getUserId(),
+      calleeId,
+    });
+  };
+
+  const sendSignal = (receiverId, signal) => {
+    return send('/app/video/signal', {
+      senderId: getUserId(),
+      receiverId,
+      ...signal,
+    });
+  };
+
+  const subscribeToIncomingCalls = (callback) => {
+    return subscribe('/user/queue/incoming-call', callback);
+  };
+
+  const subscribeToSignals = (callback) => {
+    return subscribe('/user/queue/signal', callback);
   };
 
   const value = {
     isConnected,
     subscribe,
-    unsubscribe: (dest) => {
-      const sub = subscriptions.current.get(dest);
+    unsubscribe: (destination) => {
+      const sub = subscriptions.current.get(destination);
       if (sub) {
         sub.unsubscribe();
-        subscriptions.current.delete(dest);
+        subscriptions.current.delete(destination);
       }
     },
     sendOperation: (docId, op) => send(`/app/document/${docId}/edit`, op),
     sendCursorUpdate: (docId, cursor) => send(`/app/document/${docId}/cursor`, cursor),
     joinDocument: (docId, userId) => send(`/app/document/${docId}/join`, { userId }),
-    sendMessageTo,
+    sendMessageTo: (destination, payload = {}) => send(destination, payload),
+
+    // ✅ Expose updated video signaling methods
+    initiateCall,
+    sendSignal,
+    subscribeToIncomingCalls,
+    subscribeToSignals,
   };
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
@@ -178,6 +193,6 @@ export const SocketProvider = ({ children }) => {
 
 export const useSocket = () => {
   const ctx = useContext(SocketContext);
-  if (!ctx) throw new Error('useSocket must be inside SocketProvider');
+  if (!ctx) throw new Error('useSocket must be used within a SocketProvider');
   return ctx;
 };

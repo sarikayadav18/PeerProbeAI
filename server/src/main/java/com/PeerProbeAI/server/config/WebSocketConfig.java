@@ -16,41 +16,55 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        logger.info("Configuring message broker");
+        logger.info("Configuring message broker for collaboration and video signaling");
 
-        config.enableSimpleBroker("/topic", "/queue");
+        // Enable brokers for collaboration and video signaling
+        config.enableSimpleBroker(
+                "/topic", "/queue",
+                "/video/topic", "/video/queue"
+        );
+
+        // ✅ Use a single consistent application prefix
         config.setApplicationDestinationPrefixes("/app");
+
+        // User destination prefix for convertAndSendToUser
         config.setUserDestinationPrefix("/user");
 
-        logger.debug("Enabled simple broker with destinations: /topic, /queue");
+        logger.debug("Enabled simple broker on: /topic, /queue, /video/topic, /video/queue");
         logger.debug("Set application destination prefix: /app");
         logger.debug("Set user destination prefix: /user");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        logger.info("Registering STOMP endpoints");
+        logger.info("Registering WebSocket endpoints for collaboration and video signaling");
 
-        registry.addEndpoint("/collab-ws")
-                .setAllowedOriginPatterns("http://localhost:5173", "http://127.0.0.1:5173")
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns(
+                        "http://localhost:5173",
+                        "http://127.0.0.1:5173",
+                        "https://your-production-domain.com"
+                )
                 .withSockJS()
                 .setClientLibraryUrl("https://cdn.jsdelivr.net/npm/sockjs-client@1.5.2/dist/sockjs.min.js");
 
-        registry.addEndpoint("/collab-ws-native")
-                .setAllowedOriginPatterns("http://localhost:5173", "http://127.0.0.1:5173");
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns(
+                        "http://localhost:5173",
+                        "http://127.0.0.1:5173",
+                        "https://your-production-domain.com"
+                );
 
-        logger.debug("Registered WebSocket endpoints: /collab-ws (with SockJS) and /collab-ws-native");
+        logger.debug("Registered endpoints: /ws (SockJS), /ws-native (native WebSocket)");
     }
 
     @Override
     public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
-        registration.setMessageSizeLimit(512 * 1024);
-        registration.setSendTimeLimit(20 * 1000);
-        registration.setSendBufferSizeLimit(512 * 1024);
+        registration.setMessageSizeLimit(1024 * 1024);      // 1MB
+        registration.setSendTimeLimit(30 * 1000);           // 30s
+        registration.setSendBufferSizeLimit(1024 * 1024);   // 1MB
+        registration.setTimeToFirstMessage(30000);          // 30s
 
-        logger.info("Configured WebSocket transport with:");
-        logger.debug("Message size limit: 512KB");
-        logger.debug("Send time limit: 20s");
-        logger.debug("Send buffer size limit: 512KB");
+        logger.info("Configured WebSocket transport with increased limits for signaling");
     }
 }
