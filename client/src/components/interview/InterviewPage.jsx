@@ -53,7 +53,7 @@ const InterviewPage = () => {
         // Find the peer ID (first participant that's not the current user)
         if (participants && participants.length > 0) {
           const peer = participants.find(p => Number(p) != userId);
-          if (peer) setPeerId(peer);
+          if (peer) setPeerId(Number(peer));
         }
 
         setIsLoading(false);

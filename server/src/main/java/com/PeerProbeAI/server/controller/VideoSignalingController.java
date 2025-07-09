@@ -17,71 +17,37 @@ public class VideoSignalingController {
 
     public VideoSignalingController(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
-        logger.info("VideoSignalingController initialized successfully.");
     }
 
-    /**
-     * Handles incoming call requests and forwards them to the callee via "/user/queue/incoming-call".
-     *
-     * Client should send to: "/app/video/call"
-     * Callee should subscribe to: "/user/queue/incoming-call"
-     */
     @MessageMapping("/video/call")
     public void handleCallRequest(@Payload CallRequest request) {
-        logger.info("Received call request from [{}] to [{}]", request.getCallerId(), request.getCalleeId());
-        logger.debug("CallRequest payload: {}", request);
+        logger.info("Received call request from [{}] to [{}]",
+                request.getCallerId(), request.getCalleeId());
 
         try {
-            String calleeId = request.getCalleeId().toString();
-            logger.debug("Forwarding call request to user [{}]", calleeId);
+            // Create topic path with callee ID
+            String topic = String.format("/topic/video/call/%s", request.getCalleeId());
 
-            messagingTemplate.convertAndSendToUser(
-                    calleeId,
-                    "/queue/incoming-call",
-                    request
-            );
-
-            logger.info("Call request forwarded successfully to [{}]", calleeId);
+            messagingTemplate.convertAndSend(topic, request);
+            logger.info("Call request forwarded to topic: {}", topic);
         } catch (Exception e) {
-            logger.error("Error forwarding call request from [{}] to [{}]: {}",
-                    request.getCallerId(),
-                    request.getCalleeId(),
-                    e.getMessage(), e);
+            logger.error("Error forwarding call request: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Handles WebRTC signaling messages (offer, answer, ICE candidates).
-     * Forwards the signal to the intended receiver via "/user/queue/signal".
-     *
-     * Client should send to: "/app/video/signal"
-     * Receiver should subscribe to: "/user/queue/signal"
-     */
     @MessageMapping("/video/signal")
     public void handleSignal(@Payload SignalMessage signal) {
         logger.info("Received signal [{}] from [{}] to [{}]",
-                signal.getType(),
-                signal.getSenderId(),
-                signal.getReceiverId());
-        logger.debug("SignalMessage payload: {}", signal);
+                signal.getType(), signal.getSenderId(), signal.getReceiverId());
 
         try {
-            String receiverId = signal.getReceiverId().toString();
-            logger.debug("Forwarding signal [{}] to user [{}]", signal.getType(), receiverId);
+            // Create topic path with receiver ID
+            String topic = String.format("/topic/video/signal/%s", signal.getReceiverId());
 
-            messagingTemplate.convertAndSendToUser(
-                    receiverId,
-                    "/queue/signal",
-                    signal
-            );
-
-            logger.info("Signal [{}] forwarded successfully to [{}]", signal.getType(), receiverId);
+            messagingTemplate.convertAndSend(topic, signal);
+            logger.info("Signal forwarded to topic: {}", topic);
         } catch (Exception e) {
-            logger.error("Error forwarding signal [{}] from [{}] to [{}]: {}",
-                    signal.getType(),
-                    signal.getSenderId(),
-                    signal.getReceiverId(),
-                    e.getMessage(), e);
+            logger.error("Error forwarding signal: {}", e.getMessage(), e);
         }
     }
 }

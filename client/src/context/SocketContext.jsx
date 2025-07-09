@@ -142,28 +142,29 @@ export const SocketProvider = ({ children }) => {
   };
 
   // ✅ Updated Video Signaling methods
-
   const initiateCall = (calleeId) => {
     return send('/app/video/call', {
-      callerId: getUserId(),
-      calleeId,
+      callerId: getUserId().toString(),  // Ensure string format
+      calleeId: calleeId.toString()  // Ensure string format
     });
   };
 
   const sendSignal = (receiverId, signal) => {
     return send('/app/video/signal', {
-      senderId: getUserId(),
-      receiverId,
-      ...signal,
+      senderId: getUserId().toString(),  // Ensure string format
+      receiverId: receiverId.toString(),  // Ensure string format
+      ...signal
     });
   };
 
   const subscribeToIncomingCalls = (callback) => {
-    return subscribe('/user/queue/incoming-call', callback);
+    const userId = getUserId().toString();
+    return subscribe(`/topic/video/call/${userId}`, callback);
   };
 
   const subscribeToSignals = (callback) => {
-    return subscribe('/user/queue/signal', callback);
+    const userId = getUserId().toString();
+    return subscribe(`/topic/video/signal/${userId}`, callback);
   };
 
   const value = {

@@ -21,7 +21,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // Enable brokers for collaboration and video signaling
         config.enableSimpleBroker(
                 "/topic", "/queue",
-                "/video/topic", "/video/queue"
+                "/topic/video/call",
+                "/topic/video/signal"
         );
 
         // ✅ Use a single consistent application prefix
@@ -30,9 +31,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // User destination prefix for convertAndSendToUser
         config.setUserDestinationPrefix("/user");
 
-        logger.debug("Enabled simple broker on: /topic, /queue, /video/topic, /video/queue");
-        logger.debug("Set application destination prefix: /app");
-        logger.debug("Set user destination prefix: /user");
     }
 
     @Override
