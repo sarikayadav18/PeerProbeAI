@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useSocket } from '../context/SocketContext';
 
 export const useVideoCall = (localStreamRef) => {
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const yourCurrentUserId = storedUser?.id;
+
   const {
     initiateCall,
     sendSignal,
@@ -10,276 +13,332 @@ export const useVideoCall = (localStreamRef) => {
     isConnected
   } = useSocket();
 
-  const [callState, setCallState] = useState('idle');
+  const [callState, setCallState]       = useState('idle');
   const [remoteUserId, setRemoteUserId] = useState(null);
-  const [callerId, setCallerId] = useState(null);
-  
-  const pcRef = useRef(null);
-  const iceCandidatesRef = useRef([]);
+  const [callerId, setCallerId]         = useState(null);
+  const [callError, setCallError]       = useState(null);
+
+  const pcRef              = useRef(null);
+  const iceCandidatesRef   = useRef([]);
   const earlyCandidatesRef = useRef([]);
-  const remoteUserIdRef = useRef(null);
-  const callerIdRef = useRef(null);
+  const remoteUserIdRef    = useRef(null);
+  const callerIdRef        = useRef(null);
+  const pendingOfferRef    = useRef(null);
+  const remoteStreamRef    = useRef(null);
+  const callTimeoutRef     = useRef(null);
 
-  // Sync refs with state
-  useEffect(() => {
-    remoteUserIdRef.current = remoteUserId;
-  }, [remoteUserId]);
+  useEffect(() => { remoteUserIdRef.current = remoteUserId }, [remoteUserId]);
+  useEffect(() => { callerIdRef.current   = callerId   }, [callerId]);
 
-  useEffect(() => {
-    callerIdRef.current = callerId;
-  }, [callerId]);
-
-  // Initialize peer connection
   const createPeerConnection = () => {
+    console.log('[useVideoCall] Creating RTCPeerConnection');
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        // Add TURN servers here if needed
-      ]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceTransportPolicy: 'all'
     });
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const targetId = remoteUserIdRef.current || callerIdRef.current;
-        
-        if (targetId) {
-          // Send queued candidates first
-          if (earlyCandidatesRef.current.length > 0) {
-            earlyCandidatesRef.current.forEach(candidate => {
-              sendSignal(targetId, {
-                type: 'ice-candidate',
-                candidate: candidate
-              });
-            });
-            earlyCandidatesRef.current = [];
-          }
-          
-          // Send current candidate
-          sendSignal(targetId, {
+    pc.onicecandidate = ({ candidate }) => {
+      console.log('[useVideoCall] onicecandidate', candidate);
+      if (candidate) {
+        const target = remoteUserIdRef.current || callerIdRef.current;
+        if (target) {
+          console.log(`[useVideoCall] Sending ICE to ${target}`);
+          sendSignal(target, {
             type: 'ice-candidate',
-            candidate: event.candidate
+            senderId: yourCurrentUserId,
+            receiverId: target,
+            payload: { candidate: candidate.toJSON() }
           });
         } else {
-          // Store candidate until we have a target ID
-          earlyCandidatesRef.current.push(event.candidate);
-          console.debug('ICE candidate queued - no target peer yet');
+          console.log('[useVideoCall] Queueing early ICE');
+          earlyCandidatesRef.current.push(candidate.toJSON());
         }
       }
     };
 
-    pc.ontrack = (event) => {
-      if (event.streams?.[0]) {
-        console.log('Received remote stream', event.streams[0]);
-        // Set remote stream to state/ref for your video component
-      }
+    pc.ontrack = (ev) => {
+      console.log('[useVideoCall] ontrack', ev.streams);
+      if (ev.streams?.[0]) remoteStreamRef.current = ev.streams[0];
     };
 
     pc.onconnectionstatechange = () => {
-      console.log('Connection state:', pc.connectionState);
-      if (pc.connectionState === 'disconnected' || 
-          pc.connectionState === 'failed') {
+      console.log('[useVideoCall] connectionState', pc.connectionState);
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        console.log('[useVideoCall] Connection lost');
+        setCallError('Connection lost');
         endCall();
       }
     };
 
-    // Add local stream if available
-    if (localStreamRef?.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
-      });
+    pc.oniceconnectionstatechange = () => {
+      console.log('[useVideoCall] iceConnectionState', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed') {
+        console.log('[useVideoCall] ICE failed');
+        setCallError('Connection failed');
+        endCall();
+      }
+    };
+
+    if (localStreamRef.current) {
+      console.log('[useVideoCall] Adding local tracks');
+      localStreamRef.current.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
     }
 
     return pc;
   };
 
-  // Handle incoming call
   useEffect(() => {
     if (!isConnected) return;
-
-    const unsubscribe = subscribeToIncomingCalls((callRequest) => {
-      if (callState !== 'idle') return;
-
-      setCallerId(callRequest.callerId);
-      setRemoteUserId(callRequest.callerId);
-      callerIdRef.current = callRequest.callerId;
-      remoteUserIdRef.current = callRequest.callerId;
-      
-      setCallState('ringing');
-    });
-
-    return unsubscribe;
-  }, [isConnected, callState, subscribeToIncomingCalls]);
-
-  // Handle signaling messages
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const unsubscribe = subscribeToSignals((signal) => {
-      if (!pcRef.current) {
-        if (signal.type === 'offer' && callState === 'ringing') {
-          // Don't create PC here - wait for acceptCall
-          return;
-        }
+    console.log('[useVideoCall] Subscribing to incoming calls');
+    const unsub = subscribeToIncomingCalls(({ callerId: from }) => {
+      console.log(`[useVideoCall] Incoming call from ${from}`);
+      if (callState !== 'idle') {
+        console.log('[useVideoCall] Busy—sending busy');
+        sendSignal(from, {
+          type: 'call-busy',
+          senderId: yourCurrentUserId,
+          receiverId: from
+        });
         return;
       }
+      setCallerId(from);
+      setRemoteUserId(from);
+      setCallState('ringing');
 
-      switch (signal.type) {
-        case 'offer':
-          handleOffer(signal);
-          break;
-        case 'answer':
-          handleAnswer(signal);
-          break;
-        case 'ice-candidate':
-          handleIceCandidate(signal);
-          break;
-        case 'call-rejected':
-          if (callState === 'calling') {
-            endCall();
+      callTimeoutRef.current = setTimeout(() => {
+        if (callState === 'ringing') {
+          console.log('[useVideoCall] Timeout');
+          sendSignal(from, {
+            type: 'call-timeout',
+            senderId: yourCurrentUserId,
+            receiverId: from
+          });
+          endCall();
+        }
+      }, 45000);
+    });
+    return () => {
+      console.log('[useVideoCall] Unsubscribing incoming calls');
+      clearTimeout(callTimeoutRef.current);
+      unsub();
+    };
+  }, [isConnected, callState]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    console.log('[useVideoCall] Subscribing to signals');
+    const unsub = subscribeToSignals(async (signal) => {
+      console.log('[useVideoCall] Signal', signal.type, signal);
+      const { type, senderId: from, payload } = signal;
+      const rawCand = payload?.candidate;
+
+      switch (type) {
+        case 'offer': {
+          console.log('[useVideoCall] Offer');
+          const o = payload?.offer || signal.offer;
+          pendingOfferRef.current = { ...signal, offer: new RTCSessionDescription(o) };
+          if (callState === 'ringing' && pcRef.current) {
+            await handleOffer(pendingOfferRef.current);
+            pendingOfferRef.current = null;
           }
           break;
-        default:
-          console.warn('Unknown signal type:', signal.type);
+        }
+        case 'answer': {
+          console.log('[useVideoCall] Answer');
+          const a = payload?.answer || signal.answer;
+          await handleAnswer({ answer: new RTCSessionDescription(a) });
+          break;
+        }
+        case 'ice-candidate': {
+          console.log('[useVideoCall] ICE');
+          if (rawCand) {
+            if (!pcRef.current) {
+              iceCandidatesRef.current.push(rawCand);
+            } else if (pcRef.current.remoteDescription) {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(rawCand));
+            } else {
+              iceCandidatesRef.current.push(rawCand);
+            }
+          } else {
+            console.log('[useVideoCall] No candidate data');
+          }
+          break;
+        }
+        case 'call-rejected':
+        case 'call-busy':
+        case 'call-timeout': {
+          const msg = {
+            'call-rejected': 'Call rejected',
+            'call-busy':     'User busy',
+            'call-timeout':  'No answer'
+          }[type];
+          console.log(`[useVideoCall] ${msg}`);
+          setCallError(msg);
+          endCall();
+          break;
+        }
       }
     });
+    return () => {
+      console.log('[useVideoCall] Unsubscribing signals');
+      unsub();
+    };
+  }, [isConnected, callState]);
 
-    return unsubscribe;
-  }, [isConnected, callState, subscribeToSignals]);
-
-  const handleOffer = async (signal) => {
+  const handleOffer = async ({ offer, senderId: from }) => {
+    console.log('[useVideoCall] handleOffer');
+    if (!pcRef.current) return;
     try {
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription(signal));
+      await pcRef.current.setRemoteDescription(offer);
       const answer = await pcRef.current.createAnswer();
       await pcRef.current.setLocalDescription(answer);
-
-      sendSignal(remoteUserIdRef.current, {
+      console.log('[useVideoCall] Sending answer');
+      sendSignal(from, {
         type: 'answer',
-        answer: answer
+        senderId: yourCurrentUserId,
+        receiverId: from,
+        payload: { answer }
       });
-
+      while (iceCandidatesRef.current.length) {
+        const c = iceCandidatesRef.current.shift();
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+        console.log('[useVideoCall] Drained ICE');
+      }
       setCallState('active');
-    } catch (err) {
-      console.error('Error handling offer:', err);
+      clearTimeout(callTimeoutRef.current);
+    } catch (e) {
+      console.log('[useVideoCall] handleOffer error', e);
+      setCallError('Failed to handle offer');
       endCall();
     }
   };
 
-  const handleAnswer = async (signal) => {
+  const handleAnswer = async ({ answer }) => {
+    console.log('[useVideoCall] handleAnswer');
+    if (!pcRef.current) return;
     try {
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription(signal.answer));
-      
-      // Process any queued ICE candidates
-      if (iceCandidatesRef.current.length > 0) {
-        iceCandidatesRef.current.forEach(async candidate => {
-          try {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            console.warn('Error adding queued ICE candidate:', e);
-          }
-        });
-        iceCandidatesRef.current = [];
+      await pcRef.current.setRemoteDescription(answer);
+      while (iceCandidatesRef.current.length) {
+        const c = iceCandidatesRef.current.shift();
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+        console.log('[useVideoCall] Drained ICE');
       }
-      
       setCallState('active');
-    } catch (err) {
-      console.error('Error handling answer:', err);
+      clearTimeout(callTimeoutRef.current);
+    } catch (e) {
+      console.log('[useVideoCall] handleAnswer error', e);
+      setCallError('Failed to handle answer');
       endCall();
-    }
-  };
-
-  const handleIceCandidate = async (signal) => {
-    try {
-      if (pcRef.current.remoteDescription) {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      } else {
-        iceCandidatesRef.current.push(signal.candidate);
-      }
-    } catch (err) {
-      console.error('Error adding ICE candidate:', err);
     }
   };
 
   const startCall = async (userId) => {
-    if (callState !== 'idle') return;
-
+    console.log('[useVideoCall] startCall', userId);
+    if (callState !== 'idle') {
+      console.log('[useVideoCall] Not idle');
+      return;
+    }
     try {
       pcRef.current = createPeerConnection();
-      const offer = await pcRef.current.createOffer();
+      const offer = await pcRef.current.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
       await pcRef.current.setLocalDescription(offer);
-      
+      console.log('[useVideoCall] Offer ready');
+
       setRemoteUserId(userId);
-      remoteUserIdRef.current = userId;
       setCallState('calling');
-      
+      setCallError(null);
+
       initiateCall(userId);
       sendSignal(userId, {
         type: 'offer',
-        offer: offer
+        senderId: yourCurrentUserId,
+        receiverId: userId,
+        payload: { offer }
       });
-      
-      if (earlyCandidatesRef.current.length > 0) {
-        earlyCandidatesRef.current.forEach(candidate => {
-          sendSignal(userId, {
-            type: 'ice-candidate',
-            candidate: candidate
-          });
+      console.log('[useVideoCall] Offer sent');
+
+      callTimeoutRef.current = setTimeout(() => {
+        if (callState === 'calling') {
+          console.log('[useVideoCall] Timeout no answer');
+          setCallError('No answer');
+          endCall();
+        }
+      }, 45000);
+
+      earlyCandidatesRef.current.forEach(c => {
+        sendSignal(userId, {
+          type: 'ice-candidate',
+          senderId: yourCurrentUserId,
+          receiverId: userId,
+          payload: { candidate: c }
         });
-        earlyCandidatesRef.current = [];
-      }
-    } catch (err) {
-      console.error('Error starting call:', err);
+        console.log('[useVideoCall] Sent early ICE');
+      });
+      earlyCandidatesRef.current = [];
+    } catch (e) {
+      console.log('[useVideoCall] startCall error', e);
+      setCallError('Failed to start call');
       endCall();
     }
   };
 
   const acceptCall = async () => {
-    if (callState !== 'ringing') return;
-
+    console.log('[useVideoCall] acceptCall');
+    if (callState !== 'ringing') {
+      console.log('[useVideoCall] Not ringing');
+      return;
+    }
     try {
-      // Create peer connection when call is accepted
       pcRef.current = createPeerConnection();
-      
-      // Get the offer from the caller (stored in state or need to be passed)
-      // This assumes the offer is already received and stored somewhere
-      // In a real implementation, you might need to modify this
-      const offer = await getPendingOffer(); // You'll need to implement this
-      
-      if (!offer) {
-        throw new Error('No offer found to accept');
+      if (pendingOfferRef.current) {
+        await handleOffer(pendingOfferRef.current);
+        pendingOfferRef.current = null;
       }
-      
-      await handleOffer(offer);
-      setCallState('active');
-    } catch (err) {
-      console.error('Error accepting call:', err);
+    } catch (e) {
+      console.log('[useVideoCall] acceptCall error', e);
+      setCallError('Failed to accept call');
       endCall();
     }
   };
 
   const rejectCall = () => {
-    if (callState !== 'ringing') return;
-    sendSignal(callerIdRef.current, { type: 'call-rejected' });
+    console.log('[useVideoCall] rejectCall');
+    if (callState !== 'ringing') {
+      console.log('[useVideoCall] Not ringing');
+      return;
+    }
+    sendSignal(callerIdRef.current, {
+      type: 'call-rejected',
+      senderId: yourCurrentUserId,
+      receiverId: callerIdRef.current
+    });
     endCall();
   };
 
   const endCall = () => {
+    console.log('[useVideoCall] endCall');
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
+      console.log('[useVideoCall] PC closed');
     }
-    iceCandidatesRef.current = [];
+    clearTimeout(callTimeoutRef.current);
+    iceCandidatesRef.current   = [];
     earlyCandidatesRef.current = [];
+    pendingOfferRef.current    = null;
+
     setCallState('idle');
     setRemoteUserId(null);
-    remoteUserIdRef.current = null;
     setCallerId(null);
-    callerIdRef.current = null;
+    setCallError(null);
   };
 
   return {
     callState,
     remoteUserId,
     callerId,
+    remoteStreamRef,
+    callError,
     startCall,
     acceptCall,
     rejectCall,
