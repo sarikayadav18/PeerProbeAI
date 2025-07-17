@@ -6,8 +6,10 @@ public class CollabOperation {
     public enum OperationType {
         INSERT,
         DELETE,
-        CURSOR_UPDATE,
-        SELECTION_UPDATE
+        ADD_QUESTION,
+        UPDATE_QUESTION,
+        DELETE_QUESTION
+        // ... any other existing types
     }
 
     private OperationType type;
