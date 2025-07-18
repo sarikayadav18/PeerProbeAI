@@ -16,6 +16,7 @@ import QuestionForm from './components/question/QuestionForm';
 import QuestionList from './components/question/QuestionList';
 import TestCaseForm from './components/testcase/TestCaseForm';
 import TestCaseList from './components/testcase/TestCaseList';
+import QuestionManagement from './components/question/QuestionManagement';
 
 import './App.css';
 
@@ -82,6 +83,11 @@ function App() {
                 <Route path="/test-cases" element={
                   <ProtectedRoute>
                     <TestCaseList />
+                  </ProtectedRoute>
+                } />
+                 <Route path="/questions/manage" element={
+                  <ProtectedRoute>
+                    <QuestionManagement />
                   </ProtectedRoute>
                 } />
 

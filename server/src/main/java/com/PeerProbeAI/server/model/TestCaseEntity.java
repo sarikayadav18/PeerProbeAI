@@ -1,7 +1,5 @@
 package com.PeerProbeAI.server.model;
 
-
-
 import jakarta.persistence.*;
 
 @Entity
@@ -10,34 +8,42 @@ public class TestCaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long id;  // Auto-generated, so no need to set manually
+
+    @Column(name = "question_id")
+    private Long questionId;
 
     private String input;
-
     private String output;
 
-    // Constructors
+    // Required by JPA/Hibernate
     public TestCaseEntity() {}
 
-    public TestCaseEntity(String input, String output) {
+    // Preferred constructor (without id, since it's auto-generated)
+    public TestCaseEntity(Long questionId, String input, String output) {
+        this.questionId = questionId;
         this.input = input;
         this.output = output;
     }
 
-    public TestCaseEntity(Long id, String input, String output) {
-        this.id = id;
-        this.input = input;
-        this.output = output;
-    }
+    // Getters & Setters (omitted for brevity)
+
 
     // Getters and Setters
-
     public Long getId() {
         return id;
     }
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getQuestionId() {
+        return questionId;
+    }
+
+    public void setQuestionId(Long questionId) {
+        this.questionId = questionId;
     }
 
     public String getInput() {
@@ -56,4 +62,3 @@ public class TestCaseEntity {
         this.output = output;
     }
 }
-
