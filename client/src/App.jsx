@@ -10,14 +10,13 @@ import Signup from './components/auth/Signup';
 import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
-import InterviewPage from './components/interview/InterviewPage'; // Import your InterviewPage component
+import InterviewPage from './components/interview/InterviewPage';
 import { createDocument } from './services/api';
 import QuestionForm from './components/question/QuestionForm';
 import QuestionList from './components/question/QuestionList';
 import TestCaseForm from './components/testcase/TestCaseForm';
 import TestCaseList from './components/testcase/TestCaseList';
 import QuestionManagement from './components/question/QuestionManagement';
-
 import './App.css';
 
 function App() {
@@ -28,9 +27,7 @@ function App() {
           <div className="app-container">
             <Navbar />
             <div className="content-container">
-             
               <Routes>
-                
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
@@ -41,7 +38,15 @@ function App() {
                   </ProtectedRoute>
                 } />
 
+                {/* Existing interview route */}
                 <Route path="/interview/:docId" element={
+                  <ProtectedRoute>
+                    <InterviewPage />
+                  </ProtectedRoute>
+                } />
+
+                {/* New interview route with questionId */}
+                <Route path="/interview/:docId/:questionId" element={
                   <ProtectedRoute>
                     <InterviewPage />
                   </ProtectedRoute>
@@ -50,6 +55,13 @@ function App() {
                 <Route path="/start-interview" element={
                   <ProtectedRoute>
                     <InterviewEntryPoint />
+                  </ProtectedRoute>
+                } />
+
+                {/* New route to start interview with specific question */}
+                <Route path="/start-interview/:questionId" element={
+                  <ProtectedRoute>
+                    <InterviewEntryPointWithQuestion />
                   </ProtectedRoute>
                 } />
 
@@ -109,11 +121,6 @@ function App() {
                   </ProtectedRoute>
                 } />
               </Routes>
-
-
-
-
-
             </div>
           </div>
         </Router>
@@ -136,7 +143,6 @@ const InterviewEntryPoint = () => {
     const initializeInterview = async () => {
       try {
         const response = await createDocument();
-        // Navigate to the interview page with the new docId
         navigate(`/interview/${response.id}`);
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to create interview document');
@@ -146,6 +152,53 @@ const InterviewEntryPoint = () => {
 
     initializeInterview();
   }, [navigate]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">Setting up interview session...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <div className="text-red-500 mb-4">{error}</div>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// New component for starting interview with specific question
+const InterviewEntryPointWithQuestion = () => {
+  const { questionId } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const token = user?.token;
+  const userId = user?.id;
+
+  useEffect(() => {
+    const initializeInterview = async () => {
+      try {
+        const response = await createDocument();
+        navigate(`/interview/${response.id}/${questionId}`);
+      } catch (err) {
+        setError(err.response?.data?.message || 'Failed to create interview document');
+        setLoading(false);
+      }
+    };
+
+    initializeInterview();
+  }, [navigate, questionId]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Setting up interview session...</div>;

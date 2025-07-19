@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import CodeEditor from '../editor/CodeEditor';
 import axios from 'axios';
-import VideoCallComponent from './VideoCallComponent'; // Import the VideoCallComponent
+import VideoCallComponent from './VideoCallComponent';
 
 // Configure axios instance
 const api = axios.create({
@@ -10,57 +10,66 @@ const api = axios.create({
 });
 
 const InterviewPage = () => {
-  const { docId } = useParams();
+  const { docId, questionId } = useParams();
   const user = JSON.parse(localStorage.getItem('user'));
   const userId = user?.id;
   const token = user?.token;
-  const [peerId, setPeerId] = useState(null); // State to track the peer ID
-
-  // State for the components
-  const [question, setQuestion] = useState('');
+  const [peerId, setPeerId] = useState(null);
+  const [question, setQuestion] = useState({ name: '', description: '' });
+  const [testCases, setTestCases] = useState([]);
   const [language, setLanguage] = useState('javascript');
   const [initialContent, setInitialContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // Splitter state
   const [splitterPosition, setSplitterPosition] = useState(50);
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
-  
-  // Video call box state
   const [videoCallPosition, setVideoCallPosition] = useState({ x: 20, y: 20 });
   const [isDraggingVideo, setIsDraggingVideo] = useState(false);
   const videoCallRef = useRef(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
 
-  // Fetch document data from backend
+  // Fetch document and question data
   useEffect(() => {
-    const fetchDocument = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
-        const response = await api.get(`/api/documents/${docId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        const { content, title, participants } = response.data;
         
-        setQuestion(title || 'Interview Question');
+        // Fetch document
+        const docResponse = await api.get(`/api/documents/${docId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const { content, participants } = docResponse.data;
         setInitialContent(content || '');
-
-        console.log("participant", participants);
-
-        // Find the peer ID (first participant that's not the current user)
+        
+        // Find the peer ID
         if (participants && participants.length > 0) {
           const peer = participants.find(p => Number(p) != userId);
           if (peer) setPeerId(Number(peer));
         }
 
+        // Fetch question if questionId is provided
+        if (questionId) {
+          const questionResponse = await api.get(`/api/questions/${questionId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          setQuestion({
+            name: questionResponse.data.name,
+            description: questionResponse.data.description
+          });
+
+          // Fetch test cases for the question
+          const testCasesResponse = await api.get(`/api/test-cases?questionId=${questionId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          setTestCases(testCasesResponse.data);
+        }
+
         setIsLoading(false);
       } catch (err) {
-        setError('Failed to load document');
+        setError(err.response?.data?.message || 'Failed to load data');
         setIsLoading(false);
-        console.error('Error fetching document:', err);
+        console.error('Error:', err);
         
         if (err.response?.status === 401) {
           window.location.href = '/login';
@@ -69,14 +78,14 @@ const InterviewPage = () => {
     };
 
     if (token && docId) {
-      fetchDocument();
+      fetchData();
     } else {
       setError('Missing authentication token');
       setIsLoading(false);
     }
-  }, [docId, token, userId]);
+  }, [docId, questionId, token, userId]);
 
-  // Handle splitter drag (keep existing implementation)
+  // Handle splitter drag
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (isDraggingSplitter) {
@@ -112,7 +121,7 @@ const InterviewPage = () => {
     setIsDraggingSplitter(true);
   };
 
-  // Handle video call box drag (keep existing implementation)
+  // Handle video call box drag
   useEffect(() => {
     const handleVideoMouseMove = (e) => {
       if (isDraggingVideo && videoCallRef.current) {
@@ -172,10 +181,33 @@ const InterviewPage = () => {
         className="h-full overflow-y-auto p-5 bg-gray-50 border-r border-gray-200"
         style={{ width: `${splitterPosition}%` }}
       >
-        <h2 className="text-xl font-bold">Interview Question</h2>
-        <div className="mt-5 whitespace-pre-wrap leading-relaxed">
-          {question}
+        <h2 className="text-xl font-bold mb-4">{question.name}</h2>
+        <div className="mb-6 whitespace-pre-wrap leading-relaxed">
+          {question.description}
         </div>
+
+        {/* Test Cases Section */}
+        {testCases.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-2">Test Cases:</h3>
+            <div className="space-y-3">
+              {testCases.map((tc, index) => (
+                <div key={tc.id} className="p-3 bg-gray-100 rounded">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Input:</p>
+                      <p className="font-mono text-sm">{tc.input}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Expected Output:</p>
+                      <p className="font-mono text-sm">{tc.output}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Splitter */}
@@ -211,13 +243,9 @@ const InterviewPage = () => {
         }}
         onMouseDown={handleVideoMouseDown}
       >
-        {/* Replace the placeholder content with VideoCallComponent */}
         <VideoCallComponent 
           targetUserId={peerId} 
-          onDragStart={(e) => {
-            // Prevent drag events from propagating to the parent div
-            e.stopPropagation();
-          }}
+          onDragStart={(e) => e.stopPropagation()}
           style={{
             width: '100%',
             height: '100%',
