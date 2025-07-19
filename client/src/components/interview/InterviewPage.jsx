@@ -59,7 +59,7 @@ const InterviewPage = () => {
           });
 
           // Fetch test cases for the question
-          const testCasesResponse = await api.get(`/api/test-cases?questionId=${questionId}`, {
+          const testCasesResponse = await api.get(`/api/test-cases/by-question/${questionId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           setTestCases(testCasesResponse.data);

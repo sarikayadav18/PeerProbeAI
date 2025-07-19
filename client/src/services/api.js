@@ -19,7 +19,10 @@ export const createDocument = async (title = 'Untitled Document', content = '') 
   const response = await api.post('/documents', { title, content });
   return response.data;
 };
-
+export const getRandomQuestionId = async () => {
+  const response = await api.get('/questions/random');
+  return response.data;
+};
 export const getDocument = async (docId) => {
   const response = await api.get(`/documents/${docId}`);
   return response.data;

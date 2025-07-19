@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 const QuestionList = () => {
   const [questions, setQuestions] = useState([]);
   const [expandedQuestionId, setExpandedQuestionId] = useState(null);
+  const [testCases, setTestCases] = useState({});
   const [editQuestionId, setEditQuestionId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -25,18 +26,33 @@ const QuestionList = () => {
   const fetchQuestions = async () => {
     try {
       const res = await axios.get("http://localhost:8080/api/questions", getAuthHeader());
-      const questionsWithTestCases = await Promise.all(
-        res.data.map(async (question) => {
-          const testCasesRes = await axios.get(
-            `http://localhost:8080/api/test-cases?questionId=${question.id}`,
-            getAuthHeader()
-          );
-          return { ...question, testCases: testCasesRes.data };
-        })
-      );
-      setQuestions(questionsWithTestCases);
+      setQuestions(res.data);
     } catch (err) {
       alert("Failed to fetch questions");
+    }
+  };
+
+  const fetchTestCases = async (questionId) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:8080/api/test-cases/by-question/${questionId}`,
+        getAuthHeader()
+      );
+      setTestCases(prev => ({ ...prev, [questionId]: response.data }));
+    } catch (err) {
+      console.error("Failed to fetch test cases:", err);
+      setTestCases(prev => ({ ...prev, [questionId]: [] }));
+    }
+  };
+
+  const handleToggleTestCases = async (questionId) => {
+    if (expandedQuestionId === questionId) {
+      setExpandedQuestionId(null);
+    } else {
+      setExpandedQuestionId(questionId);
+      if (!testCases[questionId]) {
+        await fetchTestCases(questionId);
+      }
     }
   };
 
@@ -45,6 +61,12 @@ const QuestionList = () => {
     if (window.confirm("Are you sure you want to delete this question?")) {
       await axios.delete(`http://localhost:8080/api/questions/${id}`, getAuthHeader());
       fetchQuestions();
+      // Remove test cases for deleted question
+      setTestCases(prev => {
+        const newTestCases = { ...prev };
+        delete newTestCases[id];
+        return newTestCases;
+      });
     }
   };
 
@@ -60,30 +82,46 @@ const QuestionList = () => {
 
   // Test Case CRUD operations
   const addTestCase = async (questionId) => {
-    await axios.post(
-      "http://localhost:8080/api/test-cases",
-      { input: newTestCaseInput, output: newTestCaseOutput, questionId },
-      getAuthHeader()
-    );
-    setNewTestCaseInput("");
-    setNewTestCaseOutput("");
-    fetchQuestions();
+    try {
+      await axios.post(
+        "http://localhost:8080/api/test-cases",
+        { input: newTestCaseInput, output: newTestCaseOutput, questionId },
+        getAuthHeader()
+      );
+      setNewTestCaseInput("");
+      setNewTestCaseOutput("");
+      await fetchTestCases(questionId);
+    } catch (err) {
+      console.error("Failed to add test case:", err);
+    }
   };
 
   const saveTestCaseEdit = async () => {
-    await axios.put(
-      `http://localhost:8080/api/test-cases/${editTestCaseId}`,
-      { input: editTestCaseInput, output: editTestCaseOutput },
-      getAuthHeader()
-    );
-    setEditTestCaseId(null);
-    fetchQuestions();
+    try {
+      await axios.put(
+        `http://localhost:8080/api/test-cases/${editTestCaseId}`,
+        { input: editTestCaseInput, output: editTestCaseOutput },
+        getAuthHeader()
+      );
+      setEditTestCaseId(null);
+      if (expandedQuestionId) {
+        await fetchTestCases(expandedQuestionId);
+      }
+    } catch (err) {
+      console.error("Failed to update test case:", err);
+    }
   };
 
   const deleteTestCase = async (id) => {
     if (window.confirm("Are you sure you want to delete this test case?")) {
-      await axios.delete(`http://localhost:8080/api/test-cases/${id}`, getAuthHeader());
-      fetchQuestions();
+      try {
+        await axios.delete(`http://localhost:8080/api/test-cases/${id}`, getAuthHeader());
+        if (expandedQuestionId) {
+          await fetchTestCases(expandedQuestionId);
+        }
+      } catch (err) {
+        console.error("Failed to delete test case:", err);
+      }
     }
   };
 
@@ -96,7 +134,6 @@ const QuestionList = () => {
       <h2 className="text-2xl font-semibold mb-6 text-center">All Questions</h2>
       {questions.map((q) => (
         <div key={q.id} className="border-b py-4">
-          {/* Question Edit Mode */}
           {editQuestionId === q.id ? (
             <div className="space-y-2">
               <input
@@ -128,7 +165,6 @@ const QuestionList = () => {
             </div>
           ) : (
             <>
-              {/* Question View Mode */}
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-lg font-medium">{q.name}</h3>
@@ -152,7 +188,7 @@ const QuestionList = () => {
                     Delete
                   </button>
                   <button
-                    onClick={() => setExpandedQuestionId(expandedQuestionId === q.id ? null : q.id)}
+                    onClick={() => handleToggleTestCases(q.id)}
                     className="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600"
                   >
                     {expandedQuestionId === q.id ? "Hide" : "Show"} Test Cases
@@ -160,14 +196,12 @@ const QuestionList = () => {
                 </div>
               </div>
 
-              {/* Test Cases Section */}
               {expandedQuestionId === q.id && (
                 <div className="mt-4 pl-4 border-l-4 border-blue-200">
                   <h4 className="font-medium mb-2">Test Cases:</h4>
-                  
-                  {q.testCases.length > 0 ? (
+                  {testCases[q.id]?.length > 0 ? (
                     <div className="space-y-3">
-                      {q.testCases.map((tc) => (
+                      {testCases[q.id].map((tc) => (
                         <div key={tc.id} className="p-3 bg-gray-50 rounded">
                           {editTestCaseId === tc.id ? (
                             <div className="space-y-2">
@@ -231,7 +265,6 @@ const QuestionList = () => {
                     <p className="text-gray-500">No test cases yet</p>
                   )}
 
-                  {/* Add New Test Case Form */}
                   <div className="mt-4">
                     <h4 className="font-medium mb-2">Add New Test Case:</h4>
                     <div className="grid grid-cols-2 gap-2 mb-2">

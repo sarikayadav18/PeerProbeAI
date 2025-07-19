@@ -11,7 +11,7 @@ import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
 import InterviewPage from './components/interview/InterviewPage';
-import { createDocument } from './services/api';
+import { createDocument, getRandomQuestionId } from './services/api';
 import QuestionForm from './components/question/QuestionForm';
 import QuestionList from './components/question/QuestionList';
 import TestCaseForm from './components/testcase/TestCaseForm';
@@ -143,7 +143,8 @@ const InterviewEntryPoint = () => {
     const initializeInterview = async () => {
       try {
         const response = await createDocument();
-        navigate(`/interview/${response.id}`);
+        const questionId=await getRandomQuestionId();
+        navigate(`/interview/${response.id}/${questionId}`);
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to create interview document');
         setLoading(false);

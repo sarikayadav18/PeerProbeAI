@@ -1,13 +1,13 @@
 package com.PeerProbeAI.server.repository;
-
-
-
-import com.PeerProbeAI.server.model.TestCaseEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import com.PeerProbeAI.server.model.TestCaseEntity;
+import java.util.List;
 
 @Repository
 public interface TestCaseRepository extends JpaRepository<TestCaseEntity, Long> {
-    // You can add custom query methods here if needed
+    // Use either:
+    List<TestCaseEntity> findByQuestionId(Long questionId);
+    // OR if using TestCaseEntity:
+    // List<TestCaseEntity> findByQuestionId(Long questionId);
 }
-

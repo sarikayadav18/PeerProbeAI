@@ -59,4 +59,14 @@ public class QuestionController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    @GetMapping("/random")
+    public ResponseEntity<Long>getRandomQuestion(){
+        List<QuestionEntity>questionEntities=questionRepository.findAll();
+        int randomIndex= (int)(Math.random()*questionEntities.size());
+        Long questionId= questionEntities.get(randomIndex).getId();
+        return ResponseEntity.ok(questionId);
+
+
+    }
 }

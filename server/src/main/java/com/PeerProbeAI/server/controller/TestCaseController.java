@@ -1,7 +1,5 @@
 package com.PeerProbeAI.server.controller;
 
-
-
 import com.PeerProbeAI.server.model.TestCaseEntity;
 import com.PeerProbeAI.server.repository.TestCaseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,14 +11,14 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/test-cases")
-@CrossOrigin(origins = "http://localhost:3000") // Enable frontend access (React)
+@CrossOrigin(origins = "http://localhost:3000")
 public class TestCaseController {
 
     @Autowired
     private TestCaseRepository testCaseRepository;
 
     // Create a new test case
-    @PostMapping
+    @PostMapping()
     public ResponseEntity<TestCaseEntity> createTestCase(@RequestBody TestCaseEntity testCase) {
         TestCaseEntity saved = testCaseRepository.save(testCase);
         return ResponseEntity.ok(saved);
@@ -31,6 +29,13 @@ public class TestCaseController {
     public ResponseEntity<List<TestCaseEntity>> getAllTestCases() {
         List<TestCaseEntity> all = testCaseRepository.findAll();
         return ResponseEntity.ok(all);
+    }
+
+    // New endpoint: Get test cases by question ID
+    @GetMapping("/by-question/{questionId}")
+    public ResponseEntity<List<TestCaseEntity>> getTestCasesByQuestionId(@PathVariable Long questionId) {
+        List<TestCaseEntity> testCases = testCaseRepository.findByQuestionId(questionId);
+        return ResponseEntity.ok(testCases);
     }
 
     // Get test case by ID
@@ -64,4 +69,3 @@ public class TestCaseController {
         }
     }
 }
-
