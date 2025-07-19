@@ -28,7 +28,9 @@ function App() {
           <div className="app-container">
             <Navbar />
             <div className="content-container">
+             
               <Routes>
+                
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
@@ -63,9 +65,16 @@ function App() {
                   </ProtectedRoute>
                 } />
 
+                {/* Question Routes */}
                 <Route path="/questions/new" element={
                   <ProtectedRoute>
                     <QuestionForm />
+                  </ProtectedRoute>
+                } />
+
+                <Route path="/questions/edit/:id" element={
+                  <ProtectedRoute>
+                    <QuestionForm mode="edit" />
                   </ProtectedRoute>
                 } />
 
@@ -75,24 +84,36 @@ function App() {
                   </ProtectedRoute>
                 } />
 
-                <Route path="/test-cases/new" element={
-                  <ProtectedRoute>
-                    <TestCaseForm />
-                  </ProtectedRoute>
-                } />
-                <Route path="/test-cases" element={
-                  <ProtectedRoute>
-                    <TestCaseList />
-                  </ProtectedRoute>
-                } />
-                 <Route path="/questions/manage" element={
+                <Route path="/questions/manage" element={
                   <ProtectedRoute>
                     <QuestionManagement />
                   </ProtectedRoute>
                 } />
 
+                {/* Test Case Routes */}
+                <Route path="/test-cases" element={
+                  <ProtectedRoute>
+                    <TestCaseList />
+                  </ProtectedRoute>
+                } />
 
+                <Route path="/test-cases/new" element={
+                  <ProtectedRoute>
+                    <TestCaseForm />
+                  </ProtectedRoute>
+                } />
+
+                <Route path="/test-cases/edit/:id" element={
+                  <ProtectedRoute>
+                    <TestCaseForm mode="edit" />
+                  </ProtectedRoute>
+                } />
               </Routes>
+
+
+
+
+
             </div>
           </div>
         </Router>
